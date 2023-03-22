@@ -10,7 +10,7 @@ class MdClient(mdapi.CThostFtdcMdSpi):
         self.front: str = front or "tcp://180.169.112.54:42213"
         self.__reqId: int = 0
         self.__ready: bool = False
-        self.__callback: Callable[[mdapi.CThostFtdcDepthMarketDataField], None] = None
+        self.__callback: Callable[[dict[str, any]], None] = None
     
     @property
     def reqId(self) -> int:
@@ -21,7 +21,7 @@ class MdClient(mdapi.CThostFtdcMdSpi):
     def ready(self) -> bool:
         return self.__ready
     
-    def registerDepthMarketDataCallback(self, callback: Callable[[mdapi.CThostFtdcDepthMarketDataField], None]):
+    def registerDepthMarketDataCallback(self, callback: Callable[[dict[str, any]], None]):
         self.__callback = callback
     
     def connect(self):

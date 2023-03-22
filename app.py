@@ -9,6 +9,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
 from mdclient import MdClient
+from tdclient import TdClient
 
 
 html = """
@@ -73,7 +74,6 @@ class MdService:
         self._queue = queue.Queue()
         self._client = MdClient()
         self._connection_manager: ConnectionManager = connection_manager
-        self._send_stream, self._receive_stream = anyio.create_memory_object_stream(1000)
         self._running = False
 
     def on_tick_data(self, data: dict[str, any]) -> None:
@@ -88,22 +88,64 @@ class MdService:
         await anyio.to_thread.run_sync(self._client.subscribe, [b"ag2306"])
         self._running = True
         while self._running:
-            print(f"running = {self._running}")
             try:
                 data = await anyio.to_thread.run_sync(self._queue.get, True, 1)
                 if data:
                     await self._connection_manager.broadcast(json.dumps(data))
             except queue.Empty:
-                print("empty data")
+                pass
     
     async def stop(self) -> None:
         print("stop the md service")
         self._running = False
-        self._client.disconnect()
+        await anyio.to_thread.run_sync(self._client.disconnect)
+
+
+class TdService:
+    def __init__(self, connection_manager: ConnectionManager) -> None:
+        self._queue: queue.Queue = queue.Queue()
+        self._client: TdClient = TdClient()
+        self._connection_manager: ConnectionManager = connection_manager
+        self._running: bool = False
+    
+    def on_order(self, data: dict[str, any]) -> None:
+        self._queue.put_nowait(data)
+    
+    def on_trade(self, data: dict[str, any]) -> None:
+        self._queue.put_nowait(data)
+    
+    async def start(self, userConfig) -> None:
+        self._client.registerOrderCallback(self.on_order)
+        self._client.registerTrdeCallback(self.on_trade)
+        self._client.setUserConfig(userConfig)
+
+        await anyio.to_thread.run_sync(self._client.connect)
+        while not self._client.ready and not self._client.error:
+            await anyio.sleep(1.0)
+        
+        if self._client.error:
+            print("td login error, return")
+            return None
+        
+        self._running = True
+        while self._running:
+            print(f"td running = {self._running}")
+            try:
+                data = await anyio.to_thread.run_sync(self._queue.get, True, 3)
+                if data:
+                    await self._connection_manager.broadcast(json.dumps(data))
+            except queue.Empty:
+                pass
+    
+    async def stop(self) -> None:
+        print("stop the td service")
+        self._running = False
+        await anyio.to_thread.run_sync(self._client.disconnect)
 
 
 manager = ConnectionManager()
 md_service = MdService(manager)
+td_service = TdService(manager)
 
 # @asynccontextmanager
 # async def lifespan(_app: FastAPI):

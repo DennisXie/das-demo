@@ -129,7 +129,6 @@ class TdService:
         
         self._running = True
         while self._running:
-            print(f"td running = {self._running}")
             try:
                 data = await anyio.to_thread.run_sync(self._queue.get, True, 3)
                 if data:
